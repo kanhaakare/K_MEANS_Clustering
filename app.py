@@ -268,7 +268,7 @@ if submitted:
 
         # NOTE: assumes class 1 = Healthy, otherwise Patient.
         # Confirm this mapping against your training dataset.
-        if str(prediction) == "1":
+        if str(prediction) == "Healthy":
             st.markdown(f"""
             <div class="result-card healthy">
                 <div class="result-label">PREDICTION OUTCOME</div>
