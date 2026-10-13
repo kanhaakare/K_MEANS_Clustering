@@ -458,51 +458,54 @@ if st.button(
         else:
             prediction_input = scaled_data
 
-        # Make the prediction.
-        prediction = model.predict(prediction_input)[0]
+       
+# Make prediction
+prediction = model.predict(prediction_input)[0]
 
-        st.markdown("---")
-        st.markdown("## 📊 Your Prediction Result")
+st.markdown("---")
+st.markdown("## 📊 Diagnosis Prediction Result")
 
-        # NOTE:
-        # Confirm the meaning of the labels from your dataset.
-        # This app cannot determine clinical meaning by itself.
-        if str(prediction) == "1":
-            st.markdown("""
-            <div class="result-card healthy">
-                <div class="result-label">PREDICTION OUTCOME</div>
-                <div class="result-number" style="color:#159765">
-                    ✅ Class 1
-                </div>
-                <div style="color:#18764f;font-weight:600">
-                    Model classification: Class 1
-                </div>
-                <p style="color:#416c5c;margin-top:12px">
-                    Your submitted measurements were assigned
-                    to Class 1 by the model. Please consult a
-                    healthcare professional for interpretation.
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+# IMPORTANT:
+# Confirm these mappings with your training dataset.
+# This example assumes Class 1 = Healthy and Class 2 = Patient.
 
-        else:
-            st.markdown(f"""
-            <div class="result-card risk">
-                <div class="result-label">PREDICTION OUTCOME</div>
-                <div class="result-number" style="color:#d85c48">
-                    📋 Class {prediction}
-                </div>
-                <div style="color:#a8483b;font-weight:600">
-                    Model classification: Class {prediction}
-                </div>
-                <p style="color:#865950;margin-top:12px">
-                    Your submitted measurements were assigned
-                    to Class {prediction} by the model. This result
-                    does not establish a diagnosis. Discuss your
-                    measurements with a healthcare professional.
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+if str(prediction) == "1":
+    st.markdown("""
+    <div class="result-card healthy">
+        <div class="result-label">PREDICTION RESULT</div>
+        <div class="result-number" style="color:#159765">
+            ✅ Healthy Person
+        </div>
+        <div style="color:#18764f;font-weight:600">
+            The model classified the input as Healthy.
+        </div>
+        <p style="color:#416c5c;margin-top:12px">
+            The model predicted the Healthy class for the
+            submitted measurements. This is not a medical
+            diagnosis; consult a healthcare professional
+            for proper interpretation.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+else:
+    st.markdown(f"""
+    <div class="result-card risk">
+        <div class="result-label">PREDICTION RESULT</div>
+        <div class="result-number" style="color:#d85c48">
+            ⚠️ Patient
+        </div>
+        <div style="color:#a8483b;font-weight:600">
+            The model classified the input as Patient.
+        </div>
+        <p style="color:#865950;margin-top:12px">
+            The model predicted the Patient class for the
+            submitted measurements. This does not confirm
+            a disease. Please consult a healthcare professional
+            for further evaluation.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
 
         # Display model probabilities if supported.
         if hasattr(model, "predict_proba"):
