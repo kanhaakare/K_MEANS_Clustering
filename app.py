@@ -110,6 +110,7 @@ div[data-testid="stNumberInput"] input {
     color: white;
     border: none;
     transform: translateY(-2px);
+    box-shadow: 0 8px 20px rgba(94,116,239,0.30);
 }
 
 .result-card {
@@ -135,9 +136,9 @@ div[data-testid="stNumberInput"] input {
 }
 
 .result-number {
-    font-size: 36px;
+    font-size: 34px;
     font-weight: 800;
-    margin: 6px 0;
+    margin: 8px 0;
 }
 
 .footer {
@@ -161,6 +162,7 @@ div[data-testid="stSidebar"] h3 {
     .hero h1 {
         font-size: 25px;
     }
+
     .section-card {
         padding: 15px;
     }
@@ -174,28 +176,21 @@ div[data-testid="stSidebar"] h3 {
 # =====================================================
 @st.cache_resource
 def load_artifacts():
-    with open("model.pkl", "rb") as f:
-        model = pickle.load(f)
+    with open("model.pkl", "rb") as file:
+        model = pickle.load(file)
 
-    with open("data.scaling.pkl", "rb") as f:
-        scaler = pickle.load(f)
+    with open("data.scaling.pkl", "rb") as file:
+        scaler = pickle.load(file)
 
     return model, scaler
 
 
-model = None
-scaler = None
-
 try:
     if not Path("model.pkl").is_file():
-        raise FileNotFoundError(
-            "model.pkl was not found in the project folder."
-        )
+        raise FileNotFoundError("model.pkl is missing.")
 
     if not Path("data.scaling.pkl").is_file():
-        raise FileNotFoundError(
-            "data.scaling.pkl was not found in the project folder."
-        )
+        raise FileNotFoundError("data.scaling.pkl is missing.")
 
     model, scaler = load_artifacts()
 
@@ -222,21 +217,22 @@ st.markdown("""
 # =====================================================
 with st.sidebar:
     st.markdown("## 👋 Welcome!")
+
     st.write(
-        "Explore clinical measurements with a "
-        "machine-learning classification tool."
+        "Explore clinical measurements using a "
+        "machine-learning classification model."
     )
 
     st.divider()
 
     st.markdown("### 🛡️ Health Insights")
-    st.caption("Explore patterns in submitted measurements.")
+    st.caption("Explore patterns in clinical measurements.")
 
     st.markdown("### 🧠 Machine Learning")
-    st.caption("Use a trained model to obtain a classification.")
+    st.caption("Obtain a prediction from your trained model.")
 
     st.markdown("### 📋 Easy to Use")
-    st.caption("Enter your values and view the model output.")
+    st.caption("Enter values and view your model's output.")
 
     st.divider()
 
@@ -249,24 +245,28 @@ with st.sidebar:
     st.divider()
 
     st.caption(
-        "Educational tool only. Avoid entering personal "
-        "identifying information."
+        "Educational use only. Avoid entering identifying "
+        "personal information."
     )
 
 
 # =====================================================
-# 6. CLINICAL INPUT FORM
+# 6. INPUT FORM
 # =====================================================
 st.markdown("""
 <div class="section-card">
-    <div class="section-title">🩺 Enter Your Clinical Details</div>
+    <div class="section-title">
+        🩺 Enter Your Clinical Details
+    </div>
     <div class="section-subtitle">
         Enter all nine measurements using the same units
-        and feature definitions as your training dataset.
+        and definitions used by your training dataset.
     </div>
 </div>
 """, unsafe_allow_html=True)
 
+
+# Basic measurements
 st.markdown("### 👤 Basic Measurements")
 
 col1, col2, col3 = st.columns(3)
@@ -298,6 +298,8 @@ with col3:
         step=1.0
     )
 
+
+# Metabolic measurements
 st.markdown("### 🧬 Metabolic Measurements")
 
 col1, col2, col3 = st.columns(3)
@@ -329,6 +331,8 @@ with col3:
         step=0.5
     )
 
+
+# Additional biomarkers
 st.markdown("### 🔬 Additional Biomarkers")
 
 col1, col2, col3 = st.columns(3)
@@ -362,18 +366,19 @@ with col3:
 
 
 # =====================================================
-# 7. PREPARE MODEL INPUT
+# 7. PREPARE INPUT WITH CORRECT FEATURE NAMES
 # =====================================================
+# These names match the scaler error message.
 feature_names = [
-    "Age",
-    "BMI",
-    "Glucose",
-    "Insulin",
-    "HOMA",
-    "Leptin",
-    "Adiponectin",
-    "Resistin",
-    "MCP-1"
+    "age",
+    "bmi",
+    "glucose",
+    "insulin",
+    "homa",
+    "leptin",
+    "adiponectin",
+    "resistin",
+    "mcp_1"
 ]
 
 values = [
@@ -400,26 +405,25 @@ input_data = pd.DataFrame(
 st.write("")
 
 if st.button(
-    "💙  Predict Classification",
+    "💙 Predict Classification",
     use_container_width=True
 ):
     try:
-        # Validate the number of expected features.
-        expected_features = getattr(
+        # Verify the number of expected scaler features.
+        scaler_feature_count = getattr(
             scaler, "n_features_in_", None
         )
 
         if (
-            expected_features is not None
-            and expected_features != input_data.shape[1]
+            scaler_feature_count is not None
+            and scaler_feature_count != len(feature_names)
         ):
             raise ValueError(
-                f"The scaler expects {expected_features} features, "
-                f"but the app provides {input_data.shape[1]}. "
-                "Check your model-training code."
+                f"The scaler expects {scaler_feature_count} features, "
+                f"but the app supplies {len(feature_names)}."
             )
 
-        # Use column names if the scaler was trained with them.
+        # Match exact scaler feature names and order.
         if hasattr(scaler, "feature_names_in_"):
             scaler_features = list(scaler.feature_names_in_)
 
@@ -430,84 +434,101 @@ if st.button(
 
             if missing:
                 raise ValueError(
-                    f"These scaler features are missing: {missing}. "
-                    "Update the input names to match training."
+                    f"Missing scaler features: {missing}"
                 )
 
             scaler_input = input_data[scaler_features]
+
         else:
-            # For scalers trained on NumPy arrays.
             scaler_input = input_data.to_numpy(dtype=float)
 
+        # Scale the input.
         scaled_data = scaler.transform(scaler_input)
 
-        # Preserve feature names if the model expects them.
+        # Prepare the data for the classifier.
         if hasattr(model, "feature_names_in_"):
             model_features = list(model.feature_names_in_)
 
             if len(model_features) != scaled_data.shape[1]:
                 raise ValueError(
-                    "The model's expected feature count does not "
-                    "match the scaled data."
+                    "The model and scaler expect different "
+                    "numbers of features. Check training."
                 )
 
+            # Use the model's expected column names and order.
             prediction_input = pd.DataFrame(
                 scaled_data,
-                columns=model_features
+                columns=(
+                    scaler_features
+                    if hasattr(scaler, "feature_names_in_")
+                    else feature_names
+                )
             )
+
+            missing_model_features = [
+                name for name in model_features
+                if name not in prediction_input.columns
+            ]
+
+            if missing_model_features:
+                raise ValueError(
+                    "The model expects different feature names: "
+                    f"{missing_model_features}. Check the training pipeline."
+                )
+
+            prediction_input = prediction_input[model_features]
+
         else:
             prediction_input = scaled_data
 
-       
-# Make prediction
-prediction = model.predict(prediction_input)[0]
+        # Generate the prediction.
+        prediction = model.predict(prediction_input)[0]
 
-st.markdown("---")
-st.markdown("## 📊 Diagnosis Prediction Result")
+        st.markdown("---")
+        st.markdown("## 📊 Prediction Result")
 
-# IMPORTANT:
-# Confirm these mappings with your training dataset.
-# This example assumes Class 1 = Healthy and Class 2 = Patient.
+        # IMPORTANT:
+        # This mapping assumes class 1 = Healthy and class 2 = Patient.
+        # Confirm the actual label mapping from your training dataset.
+        if str(prediction) == "1":
+            st.markdown("""
+            <div class="result-card healthy">
+                <div class="result-label">PREDICTION OUTCOME</div>
+                <div class="result-number" style="color:#159765">
+                    ✅ Healthy Person
+                </div>
+                <div style="color:#18764f;font-weight:600">
+                    Model predicted Class 1
+                </div>
+                <p style="color:#416c5c;margin-top:12px">
+                    The model assigned your measurements to
+                    Class 1. This is not a medical diagnosis.
+                    Consult a healthcare professional for
+                    interpretation of your results.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
-if str(prediction) == "1":
-    st.markdown("""
-    <div class="result-card healthy">
-        <div class="result-label">PREDICTION RESULT</div>
-        <div class="result-number" style="color:#159765">
-            ✅ Healthy Person
-        </div>
-        <div style="color:#18764f;font-weight:600">
-            The model classified the input as Healthy.
-        </div>
-        <p style="color:#416c5c;margin-top:12px">
-            The model predicted the Healthy class for the
-            submitted measurements. This is not a medical
-            diagnosis; consult a healthcare professional
-            for proper interpretation.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+        else:
+            st.markdown(f"""
+            <div class="result-card risk">
+                <div class="result-label">PREDICTION OUTCOME</div>
+                <div class="result-number" style="color:#d85c48">
+                    ⚠️ Patient
+                </div>
+                <div style="color:#a8483b;font-weight:600">
+                    Model predicted Class {prediction}
+                </div>
+                <p style="color:#865950;margin-top:12px">
+                    The model assigned your measurements to
+                    Class {prediction}. This does not confirm
+                    a disease. Please consult a healthcare
+                    professional for further evaluation.
+                </p>
+            </div>
+            """, unsafe_allow_html=True)
 
-else:
-    st.markdown(f"""
-    <div class="result-card risk">
-        <div class="result-label">PREDICTION RESULT</div>
-        <div class="result-number" style="color:#d85c48">
-            ⚠️ Patient
-        </div>
-        <div style="color:#a8483b;font-weight:600">
-            The model classified the input as Patient.
-        </div>
-        <p style="color:#865950;margin-top:12px">
-            The model predicted the Patient class for the
-            submitted measurements. This does not confirm
-            a disease. Please consult a healthcare professional
-            for further evaluation.
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
-
-        # Display model probabilities if supported.
+        # Display model probabilities when supported.
         if hasattr(model, "predict_proba"):
             probabilities = model.predict_proba(
                 prediction_input
@@ -527,11 +548,11 @@ else:
             )
 
             st.caption(
-                "These are model probabilities, not validated "
-                "clinical probabilities or a measure of disease risk."
+                "These probabilities describe the model output; "
+                "they are not validated clinical risk estimates."
             )
 
-        # Show the input values.
+        # Display the entered measurements.
         with st.expander("🔎 Review Entered Measurements"):
             st.dataframe(
                 input_data,
@@ -541,15 +562,12 @@ else:
 
     except Exception as error:
         st.error("❌ Prediction could not be completed.")
-        st.markdown(
-            "### 🔍 Technical error details"
-        )
+        st.markdown("### 🔍 Technical Error Details")
         st.exception(error)
 
         st.info(
-            "Check the feature count, feature order, column names, "
-            "scaler and model training pipeline. The technical "
-            "error above identifies the operation that failed."
+            "Check the feature names, feature order, scaler, "
+            "and model training pipeline."
         )
 
 
@@ -565,4 +583,3 @@ st.markdown("""
     professional medical advice or diagnosis.
 </div>
 """, unsafe_allow_html=True)
-
