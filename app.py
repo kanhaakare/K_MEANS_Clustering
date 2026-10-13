@@ -1,585 +1,473 @@
+"""
+Health Diagnosis Predictor - Desktop App
+----------------------------------------
+Install:   pip install customtkinter pandas numpy scikit-learn
+Run:       python health_predictor_desktop.py
 
-import streamlit as st
-import pandas as pd
-import numpy as np
+Place model.pkl and data.scaling.pkl in the same folder as this script.
+"""
+
 import pickle
+import sys
 from pathlib import Path
+from tkinter import messagebox
+
+import customtkinter as ctk
+import pandas as pd
 
 # =====================================================
-# 1. PAGE CONFIGURATION
+# THEME
 # =====================================================
-st.set_page_config(
-    page_title="Health Diagnosis Predictor",
-    page_icon="💙",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+ctk.set_appearance_mode("light")
 
-# =====================================================
-# 2. CUSTOM CSS
-# =====================================================
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+BG = "#f0f7ff"
+CARD = "#ffffff"
+CARD_BORDER = "#dce9fb"
+NAVY = "#15346b"
+TITLE = "#173b75"
+MUTED = "#7385a2"
+LABEL = "#244577"
+ACCENT = "#627cf6"
+ACCENT_HOVER = "#4f67e0"
+SIDEBAR_BG = "#e3f2ff"
 
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-}
+HEALTHY_BG, HEALTHY_BORDER, HEALTHY_FG = "#d9f8eb", "#b9eed2", "#159765"
+RISK_BG, RISK_BORDER, RISK_FG = "#ffebe8", "#ffd1c7", "#d85c48"
 
-.stApp {
-    background: linear-gradient(135deg, #f0f7ff, #f8faff, #edfffb);
-}
+FONT = "Segoe UI"
 
-[data-testid="stHeader"] {
-    background: transparent;
-}
+BASE_DIR = Path(__file__).resolve().parent
 
-.block-container {
-    padding-top: 1.7rem;
-    padding-bottom: 2rem;
-    max-width: 1450px;
-}
+FEATURE_NAMES = ["age", "bmi", "glucose", "insulin", "homa",
+                 "leptin", "adiponectin", "resistin", "mcp_1"]
 
-.hero {
-    background: linear-gradient(120deg, #ffffff, #e9f5ff);
-    padding: 27px 30px;
-    border-radius: 22px;
-    border: 1px solid #dceafe;
-    box-shadow: 0 7px 25px rgba(48, 94, 160, 0.08);
-    margin-bottom: 22px;
-}
-
-.hero h1 {
-    color: #15346b;
-    font-size: 34px;
-    font-weight: 800;
-    margin: 0;
-}
-
-.hero p {
-    color: #62789d;
-    font-size: 15px;
-    margin: 9px 0 0;
-}
-
-.section-card {
-    background: rgba(255,255,255,0.92);
-    border: 1px solid #dce9fb;
-    border-radius: 20px;
-    padding: 23px;
-    box-shadow: 0 5px 20px rgba(37,77,130,0.06);
-    margin-bottom: 18px;
-}
-
-.section-title {
-    color: #173b75;
-    font-size: 22px;
-    font-weight: 750;
-    margin-bottom: 4px;
-}
-
-.section-subtitle {
-    color: #7385a2;
-    font-size: 13px;
-    margin-bottom: 18px;
-}
-
-div[data-testid="stNumberInput"] label {
-    color: #244577;
-    font-weight: 600;
-}
-
-div[data-testid="stNumberInput"] input {
-    border-radius: 10px;
-}
-
-.stButton > button {
-    width: 100%;
-    min-height: 52px;
-    background: linear-gradient(100deg, #39b7ed, #627cf6, #a77cf6);
-    color: white;
-    border: none;
-    border-radius: 12px;
-    font-size: 17px;
-    font-weight: 700;
-    box-shadow: 0 5px 14px rgba(94,116,239,0.22);
-    transition: 0.2s ease;
-}
-
-.stButton > button:hover {
-    color: white;
-    border: none;
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(94,116,239,0.30);
-}
-
-.result-card {
-    border-radius: 18px;
-    padding: 24px;
-    margin-top: 20px;
-}
-
-.healthy {
-    background: linear-gradient(120deg, #edfff5, #d9f8eb);
-    border: 1px solid #b9eed2;
-}
-
-.risk {
-    background: linear-gradient(120deg, #fff5f1, #ffebe8);
-    border: 1px solid #ffd1c7;
-}
-
-.result-label {
-    color: #45617d;
-    font-size: 15px;
-    font-weight: 600;
-}
-
-.result-number {
-    font-size: 34px;
-    font-weight: 800;
-    margin: 8px 0;
-}
-
-.footer {
-    color: #8191aa;
-    font-size: 12px;
-    text-align: center;
-    padding: 20px 0 5px;
-}
-
-div[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #e3f2ff, #f4f6ff, #e3faf5);
-    border-right: 1px solid #d7e7f8;
-}
-
-div[data-testid="stSidebar"] h2,
-div[data-testid="stSidebar"] h3 {
-    color: #183d79;
-}
-
-@media (max-width: 768px) {
-    .hero h1 {
-        font-size: 25px;
-    }
-
-    .section-card {
-        padding: 15px;
-    }
-}
-</style>
-""", unsafe_allow_html=True)
+# (key, label, min, max, default)
+SECTIONS = [
+    ("👤  Basic Measurements", [
+        ("age", "Age (years)", 1, 120, 50),
+        ("bmi", "BMI", 5.0, 60.0, 25.0),
+        ("glucose", "Glucose", 10.0, 300.0, 90.0),
+    ]),
+    ("🧬  Metabolic Measurements", [
+        ("insulin", "Insulin", 0.1, 100.0, 6.0),
+        ("homa", "HOMA", 0.1, 30.0, 1.5),
+        ("leptin", "Leptin", 1.0, 150.0, 15.0),
+    ]),
+    ("🔬  Additional Biomarkers", [
+        ("adiponectin", "Adiponectin", 1.0, 50.0, 10.0),
+        ("resistin", "Resistin", 1.0, 100.0, 10.0),
+        ("mcp_1", "MCP-1", 10.0, 2000.0, 400.0),
+    ]),
+]
 
 
 # =====================================================
-# 3. LOAD MODEL AND SCALER
+# MODEL LOADING
 # =====================================================
-@st.cache_resource
 def load_artifacts():
-    with open("model.pkl", "rb") as file:
-        model = pickle.load(file)
+    model_path = BASE_DIR / "model.pkl"
+    scaler_path = BASE_DIR / "data.scaling.pkl"
 
-    with open("data.scaling.pkl", "rb") as file:
-        scaler = pickle.load(file)
+    if not model_path.is_file():
+        raise FileNotFoundError(f"model.pkl is missing in {BASE_DIR}")
+    if not scaler_path.is_file():
+        raise FileNotFoundError(f"data.scaling.pkl is missing in {BASE_DIR}")
 
+    with open(model_path, "rb") as f:
+        model = pickle.load(f)
+    with open(scaler_path, "rb") as f:
+        scaler = pickle.load(f)
     return model, scaler
 
 
-try:
-    if not Path("model.pkl").is_file():
-        raise FileNotFoundError("model.pkl is missing.")
+def run_prediction(model, scaler, values):
+    """Same pipeline as the Streamlit app. Returns (prediction, classes, probs)."""
+    input_data = pd.DataFrame([values], columns=FEATURE_NAMES)
 
-    if not Path("data.scaling.pkl").is_file():
-        raise FileNotFoundError("data.scaling.pkl is missing.")
-
-    model, scaler = load_artifacts()
-
-except Exception as error:
-    st.error("Unable to load the model or scaler.")
-    st.exception(error)
-    st.stop()
-
-
-# =====================================================
-# 4. HEADER
-# =====================================================
-st.markdown("""
-<div class="hero">
-    <h1>💙 Health Diagnosis Predictor</h1>
-    <p>Better Insights &nbsp; • &nbsp; Smarter Health Screening
-    &nbsp; • &nbsp; Healthier Tomorrow</p>
-</div>
-""", unsafe_allow_html=True)
-
-
-# =====================================================
-# 5. SIDEBAR
-# =====================================================
-with st.sidebar:
-    st.markdown("## 👋 Welcome!")
-
-    st.write(
-        "Explore clinical measurements using a "
-        "machine-learning classification model."
-    )
-
-    st.divider()
-
-    st.markdown("### 🛡️ Health Insights")
-    st.caption("Explore patterns in clinical measurements.")
-
-    st.markdown("### 🧠 Machine Learning")
-    st.caption("Obtain a prediction from your trained model.")
-
-    st.markdown("### 📋 Easy to Use")
-    st.caption("Enter values and view your model's output.")
-
-    st.divider()
-
-    st.markdown("### 💚 Healthy Habits")
-    st.write("🥗 Balanced nutrition")
-    st.write("🏃 Regular physical activity")
-    st.write("💧 Adequate hydration")
-    st.write("🩺 Routine medical checkups")
-
-    st.divider()
-
-    st.caption(
-        "Educational use only. Avoid entering identifying "
-        "personal information."
-    )
-
-
-# =====================================================
-# 6. INPUT FORM
-# =====================================================
-st.markdown("""
-<div class="section-card">
-    <div class="section-title">
-        🩺 Enter Your Clinical Details
-    </div>
-    <div class="section-subtitle">
-        Enter all nine measurements using the same units
-        and definitions used by your training dataset.
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# Basic measurements
-st.markdown("### 👤 Basic Measurements")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    age = st.number_input(
-        "Age (years)",
-        min_value=1,
-        max_value=120,
-        value=50
-    )
-
-with col2:
-    bmi = st.number_input(
-        "BMI",
-        min_value=5.0,
-        max_value=60.0,
-        value=25.0,
-        step=0.1,
-        format="%.1f"
-    )
-
-with col3:
-    glucose = st.number_input(
-        "Glucose",
-        min_value=10.0,
-        max_value=300.0,
-        value=90.0,
-        step=1.0
-    )
-
-
-# Metabolic measurements
-st.markdown("### 🧬 Metabolic Measurements")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    insulin = st.number_input(
-        "Insulin",
-        min_value=0.1,
-        max_value=100.0,
-        value=6.0,
-        step=0.1
-    )
-
-with col2:
-    homa = st.number_input(
-        "HOMA",
-        min_value=0.1,
-        max_value=30.0,
-        value=1.5,
-        step=0.1
-    )
-
-with col3:
-    leptin = st.number_input(
-        "Leptin",
-        min_value=1.0,
-        max_value=150.0,
-        value=15.0,
-        step=0.5
-    )
-
-
-# Additional biomarkers
-st.markdown("### 🔬 Additional Biomarkers")
-
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    adiponectin = st.number_input(
-        "Adiponectin",
-        min_value=1.0,
-        max_value=50.0,
-        value=10.0,
-        step=0.5
-    )
-
-with col2:
-    resistin = st.number_input(
-        "Resistin",
-        min_value=1.0,
-        max_value=100.0,
-        value=10.0,
-        step=0.5
-    )
-
-with col3:
-    mcp_1 = st.number_input(
-        "MCP-1",
-        min_value=10.0,
-        max_value=2000.0,
-        value=400.0,
-        step=10.0
-    )
-
-
-# =====================================================
-# 7. PREPARE INPUT WITH CORRECT FEATURE NAMES
-# =====================================================
-# These names match the scaler error message.
-feature_names = [
-    "age",
-    "bmi",
-    "glucose",
-    "insulin",
-    "homa",
-    "leptin",
-    "adiponectin",
-    "resistin",
-    "mcp_1"
-]
-
-values = [
-    age,
-    bmi,
-    glucose,
-    insulin,
-    homa,
-    leptin,
-    adiponectin,
-    resistin,
-    mcp_1
-]
-
-input_data = pd.DataFrame(
-    [values],
-    columns=feature_names
-)
-
-
-# =====================================================
-# 8. PREDICTION
-# =====================================================
-st.write("")
-
-if st.button(
-    "💙 Predict Classification",
-    use_container_width=True
-):
-    try:
-        # Verify the number of expected scaler features.
-        scaler_feature_count = getattr(
-            scaler, "n_features_in_", None
+    n_expected = getattr(scaler, "n_features_in_", None)
+    if n_expected is not None and n_expected != len(FEATURE_NAMES):
+        raise ValueError(
+            f"The scaler expects {n_expected} features, "
+            f"but the app supplies {len(FEATURE_NAMES)}."
         )
 
-        if (
-            scaler_feature_count is not None
-            and scaler_feature_count != len(feature_names)
-        ):
+    scaler_features = None
+    if hasattr(scaler, "feature_names_in_"):
+        scaler_features = list(scaler.feature_names_in_)
+        missing = [n for n in scaler_features if n not in input_data.columns]
+        if missing:
+            raise ValueError(f"Missing scaler features: {missing}")
+        scaler_input = input_data[scaler_features]
+    else:
+        scaler_input = input_data.to_numpy(dtype=float)
+
+    scaled = scaler.transform(scaler_input)
+
+    if hasattr(model, "feature_names_in_"):
+        model_features = list(model.feature_names_in_)
+        if len(model_features) != scaled.shape[1]:
             raise ValueError(
-                f"The scaler expects {scaler_feature_count} features, "
-                f"but the app supplies {len(feature_names)}."
+                "The model and scaler expect different numbers of features. "
+                "Check training."
             )
-
-        # Match exact scaler feature names and order.
-        if hasattr(scaler, "feature_names_in_"):
-            scaler_features = list(scaler.feature_names_in_)
-
-            missing = [
-                name for name in scaler_features
-                if name not in input_data.columns
-            ]
-
-            if missing:
-                raise ValueError(
-                    f"Missing scaler features: {missing}"
-                )
-
-            scaler_input = input_data[scaler_features]
-
-        else:
-            scaler_input = input_data.to_numpy(dtype=float)
-
-        # Scale the input.
-        scaled_data = scaler.transform(scaler_input)
-
-        # Prepare the data for the classifier.
-        if hasattr(model, "feature_names_in_"):
-            model_features = list(model.feature_names_in_)
-
-            if len(model_features) != scaled_data.shape[1]:
-                raise ValueError(
-                    "The model and scaler expect different "
-                    "numbers of features. Check training."
-                )
-
-            # Use the model's expected column names and order.
-            prediction_input = pd.DataFrame(
-                scaled_data,
-                columns=(
-                    scaler_features
-                    if hasattr(scaler, "feature_names_in_")
-                    else feature_names
-                )
+        cols = scaler_features if scaler_features else FEATURE_NAMES
+        pred_input = pd.DataFrame(scaled, columns=cols)
+        missing = [n for n in model_features if n not in pred_input.columns]
+        if missing:
+            raise ValueError(
+                f"The model expects different feature names: {missing}."
             )
+        pred_input = pred_input[model_features]
+    else:
+        pred_input = scaled
 
-            missing_model_features = [
-                name for name in model_features
-                if name not in prediction_input.columns
-            ]
+    prediction = model.predict(pred_input)[0]
 
-            if missing_model_features:
-                raise ValueError(
-                    "The model expects different feature names: "
-                    f"{missing_model_features}. Check the training pipeline."
-                )
+    classes, probs = None, None
+    if hasattr(model, "predict_proba"):
+        probs = model.predict_proba(pred_input)[0]
+        classes = [str(c) for c in model.classes_]
 
-            prediction_input = prediction_input[model_features]
+    return prediction, classes, probs
 
-        else:
-            prediction_input = scaled_data
 
-        # Generate the prediction.
-        prediction = model.predict(prediction_input)[0]
+# =====================================================
+# APP
+# =====================================================
+class HealthApp(ctk.CTk):
+    def __init__(self, model, scaler):
+        super().__init__()
+        self.model = model
+        self.scaler = scaler
+        self.entries = {}
+        self.ranges = {}
 
-        st.markdown("---")
-        st.markdown("## 📊 Prediction Result")
+        self.title("💙 Health Diagnosis Predictor")
+        self.geometry("1280x820")
+        self.minsize(1050, 700)
+        self.configure(fg_color=BG)
 
-        # IMPORTANT:
-        # This mapping assumes class 1 = Healthy and class 2 = Patient.
-        # Confirm the actual label mapping from your training dataset.
-        if str(prediction) == "1":
-            st.markdown("""
-            <div class="result-card healthy">
-                <div class="result-label">PREDICTION OUTCOME</div>
-                <div class="result-number" style="color:#159765">
-                    ✅ Healthy Person
-                </div>
-                <div style="color:#18764f;font-weight:600">
-                    Model predicted Class 1
-                </div>
-                <p style="color:#416c5c;margin-top:12px">
-                    The model assigned your measurements to
-                    Class 1. This is not a medical diagnosis.
-                    Consult a healthcare professional for
-                    interpretation of your results.
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
 
-        else:
-            st.markdown(f"""
-            <div class="result-card risk">
-                <div class="result-label">PREDICTION OUTCOME</div>
-                <div class="result-number" style="color:#d85c48">
-                    ⚠️ Patient
-                </div>
-                <div style="color:#a8483b;font-weight:600">
-                    Model predicted Class {prediction}
-                </div>
-                <p style="color:#865950;margin-top:12px">
-                    The model assigned your measurements to
-                    Class {prediction}. This does not confirm
-                    a disease. Please consult a healthcare
-                    professional for further evaluation.
-                </p>
-            </div>
-            """, unsafe_allow_html=True)
+        self._build_sidebar()
+        self._build_main()
 
-        # Display model probabilities when supported.
-        if hasattr(model, "predict_proba"):
-            probabilities = model.predict_proba(
-                prediction_input
-            )[0]
+    # ---------------- Sidebar ----------------
+    def _build_sidebar(self):
+        sb = ctk.CTkFrame(self, width=270, corner_radius=0,
+                          fg_color=SIDEBAR_BG)
+        sb.grid(row=0, column=0, sticky="nsew")
+        sb.grid_propagate(False)
 
-            st.markdown("### 📈 Model Class Probabilities")
+        ctk.CTkLabel(sb, text="👋  Welcome!", font=(FONT, 22, "bold"),
+                     text_color=TITLE).pack(anchor="w", padx=22, pady=(28, 6))
+        ctk.CTkLabel(
+            sb, justify="left", wraplength=225, text_color=LABEL,
+            font=(FONT, 13),
+            text="Explore clinical measurements using a machine-learning "
+                 "classification model.",
+        ).pack(anchor="w", padx=22)
 
-            probability_data = pd.DataFrame({
-                "Class": [
-                    str(label) for label in model.classes_
-                ],
-                "Probability": probabilities
-            })
+        self._divider(sb)
 
-            st.bar_chart(
-                probability_data.set_index("Class")
-            )
+        for title, caption in [
+            ("🛡️  Health Insights", "Explore patterns in clinical measurements."),
+            ("🧠  Machine Learning", "Obtain a prediction from your trained model."),
+            ("📋  Easy to Use", "Enter values and view your model's output."),
+        ]:
+            ctk.CTkLabel(sb, text=title, font=(FONT, 14, "bold"),
+                         text_color=TITLE).pack(anchor="w", padx=22, pady=(10, 0))
+            ctk.CTkLabel(sb, text=caption, font=(FONT, 12), text_color=MUTED,
+                         wraplength=225, justify="left"
+                         ).pack(anchor="w", padx=22)
 
-            st.caption(
-                "These probabilities describe the model output; "
-                "they are not validated clinical risk estimates."
-            )
+        self._divider(sb)
 
-        # Display the entered measurements.
-        with st.expander("🔎 Review Entered Measurements"):
-            st.dataframe(
-                input_data,
-                use_container_width=True,
-                hide_index=True
-            )
+        ctk.CTkLabel(sb, text="💚  Healthy Habits", font=(FONT, 15, "bold"),
+                     text_color=TITLE).pack(anchor="w", padx=22, pady=(0, 6))
+        for line in ["🥗  Balanced nutrition", "🏃  Regular physical activity",
+                     "💧  Adequate hydration", "🩺  Routine medical checkups"]:
+            ctk.CTkLabel(sb, text=line, font=(FONT, 13),
+                         text_color=LABEL).pack(anchor="w", padx=22, pady=1)
 
-    except Exception as error:
-        st.error("❌ Prediction could not be completed.")
-        st.markdown("### 🔍 Technical Error Details")
-        st.exception(error)
+        ctk.CTkLabel(
+            sb, justify="left", wraplength=225, font=(FONT, 11),
+            text_color=MUTED,
+            text="Educational use only. Avoid entering identifying "
+                 "personal information.",
+        ).pack(side="bottom", anchor="w", padx=22, pady=20)
 
-        st.info(
-            "Check the feature names, feature order, scaler, "
-            "and model training pipeline."
+    @staticmethod
+    def _divider(parent):
+        ctk.CTkFrame(parent, height=1, fg_color="#c5d9ee"
+                     ).pack(fill="x", padx=22, pady=16)
+
+    # ---------------- Main area ----------------
+    def _build_main(self):
+        self.main = ctk.CTkScrollableFrame(self, fg_color=BG,
+                                           corner_radius=0)
+        self.main.grid(row=0, column=1, sticky="nsew", padx=(0, 4))
+        self.main.grid_columnconfigure(0, weight=1)
+
+        # Hero
+        hero = ctk.CTkFrame(self.main, fg_color="#eaf5ff", corner_radius=22,
+                            border_width=1, border_color="#dceafe")
+        hero.grid(row=0, column=0, sticky="ew", padx=26, pady=(24, 14))
+        ctk.CTkLabel(hero, text="💙  Health Diagnosis Predictor",
+                     font=(FONT, 30, "bold"), text_color=NAVY
+                     ).pack(anchor="w", padx=28, pady=(22, 2))
+        ctk.CTkLabel(
+            hero, font=(FONT, 14), text_color="#62789d",
+            text="Better Insights   •   Smarter Health Screening   •   "
+                 "Healthier Tomorrow",
+        ).pack(anchor="w", padx=28, pady=(0, 22))
+
+        # Form card
+        card = ctk.CTkFrame(self.main, fg_color=CARD, corner_radius=20,
+                            border_width=1, border_color=CARD_BORDER)
+        card.grid(row=1, column=0, sticky="ew", padx=26, pady=8)
+        card.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(card, text="🩺  Enter Your Clinical Details",
+                     font=(FONT, 21, "bold"), text_color=TITLE
+                     ).grid(row=0, column=0, sticky="w", padx=26, pady=(22, 0))
+        ctk.CTkLabel(
+            card, font=(FONT, 12), text_color=MUTED, justify="left",
+            text="Enter all nine measurements using the same units and "
+                 "definitions used by your training dataset.",
+        ).grid(row=1, column=0, sticky="w", padx=26, pady=(2, 8))
+
+        row = 2
+        for section_title, fields in SECTIONS:
+            ctk.CTkLabel(card, text=section_title, font=(FONT, 15, "bold"),
+                         text_color=LABEL
+                         ).grid(row=row, column=0, sticky="w",
+                                padx=26, pady=(14, 4))
+            row += 1
+
+            grid = ctk.CTkFrame(card, fg_color="transparent")
+            grid.grid(row=row, column=0, sticky="ew", padx=20, pady=(0, 4))
+            for c in range(3):
+                grid.grid_columnconfigure(c, weight=1, uniform="cols")
+            row += 1
+
+            for col, (key, label, lo, hi, default) in enumerate(fields):
+                self._make_field(grid, col, key, label, lo, hi, default)
+
+        # Buttons
+        btn_row = ctk.CTkFrame(card, fg_color="transparent")
+        btn_row.grid(row=row, column=0, sticky="ew", padx=26, pady=(18, 24))
+        btn_row.grid_columnconfigure(0, weight=1)
+
+        self.predict_btn = ctk.CTkButton(
+            btn_row, text="💙  Predict Classification", height=52,
+            corner_radius=12, font=(FONT, 17, "bold"),
+            fg_color=ACCENT, hover_color=ACCENT_HOVER,
+            command=self.on_predict,
         )
+        self.predict_btn.grid(row=0, column=0, sticky="ew")
+
+        ctk.CTkButton(
+            btn_row, text="Reset", width=110, height=52, corner_radius=12,
+            font=(FONT, 15, "bold"), fg_color="#eef2fb",
+            hover_color="#dde5f7", text_color=LABEL,
+            command=self.on_reset,
+        ).grid(row=0, column=1, padx=(12, 0))
+
+        # Result container
+        self.result_frame = ctk.CTkFrame(self.main, fg_color="transparent")
+        self.result_frame.grid(row=2, column=0, sticky="ew",
+                               padx=26, pady=(8, 0))
+        self.result_frame.grid_columnconfigure(0, weight=1)
+
+        # Footer
+        ctk.CTkLabel(
+            self.main, font=(FONT, 11), text_color="#8191aa",
+            text="💙 Health Diagnosis Predictor   |   Machine Learning   |   "
+                 "Data-Driven Insights\n\nFor educational purposes only. "
+                 "Not a substitute for professional medical advice or "
+                 "diagnosis.",
+        ).grid(row=3, column=0, pady=(24, 16))
+
+    def _make_field(self, parent, col, key, label, lo, hi, default):
+        box = ctk.CTkFrame(parent, fg_color="transparent")
+        box.grid(row=0, column=col, sticky="ew", padx=6, pady=4)
+
+        ctk.CTkLabel(box, text=label, font=(FONT, 13, "bold"),
+                     text_color=LABEL).pack(anchor="w")
+        entry = ctk.CTkEntry(box, height=40, corner_radius=10,
+                             border_color="#cfdcf1", fg_color="#fbfdff",
+                             text_color=NAVY, font=(FONT, 14))
+        entry.insert(0, str(default))
+        entry.pack(fill="x", pady=(3, 1))
+        entry.bind("<Return>", lambda e: self.on_predict())
+
+        ctk.CTkLabel(box, text=f"Range: {lo:g} – {hi:g}", font=(FONT, 11),
+                     text_color=MUTED).pack(anchor="w")
+
+        self.entries[key] = entry
+        self.ranges[key] = (label, lo, hi, default)
+
+    # ---------------- Actions ----------------
+    def on_reset(self):
+        for key, entry in self.entries.items():
+            entry.delete(0, "end")
+            entry.insert(0, str(self.ranges[key][3]))
+            entry.configure(border_color="#cfdcf1")
+        self._clear_results()
+
+    def _clear_results(self):
+        for w in self.result_frame.winfo_children():
+            w.destroy()
+
+    def _read_values(self):
+        """Validate inputs; returns list of values or None."""
+        values, errors = [], []
+        for key in FEATURE_NAMES:
+            label, lo, hi, _ = self.ranges[key]
+            entry = self.entries[key]
+            entry.configure(border_color="#cfdcf1")
+            try:
+                v = float(entry.get().strip())
+                if not lo <= v <= hi:
+                    raise ValueError
+                values.append(v)
+            except ValueError:
+                entry.configure(border_color="#e0584a")
+                errors.append(f"• {label}: enter a number from {lo:g} to {hi:g}")
+        if errors:
+            messagebox.showwarning("Please check your inputs",
+                                   "\n".join(errors))
+            return None
+        return values
+
+    def on_predict(self):
+        values = self._read_values()
+        if values is None:
+            return
+        self._clear_results()
+
+        try:
+            prediction, classes, probs = run_prediction(
+                self.model, self.scaler, values)
+        except Exception as err:
+            self._show_error(err)
+            return
+
+        self._show_result(prediction)
+        if probs is not None:
+            self._show_probabilities(classes, probs)
+
+        # Scroll to the results
+        self.after(100, lambda: self.main._parent_canvas.yview_moveto(0.85))
+
+    # ---------------- Result rendering ----------------
+    def _show_error(self, err):
+        card = ctk.CTkFrame(self.result_frame, fg_color=RISK_BG,
+                            border_width=1, border_color=RISK_BORDER,
+                            corner_radius=18)
+        card.grid(row=0, column=0, sticky="ew", pady=10)
+        ctk.CTkLabel(card, text="❌  Prediction could not be completed.",
+                     font=(FONT, 18, "bold"), text_color=RISK_FG
+                     ).pack(anchor="w", padx=24, pady=(18, 4))
+        ctk.CTkLabel(card, text=f"{type(err).__name__}: {err}",
+                     font=(FONT, 12), text_color="#865950",
+                     wraplength=850, justify="left"
+                     ).pack(anchor="w", padx=24)
+        ctk.CTkLabel(
+            card, font=(FONT, 12), text_color="#865950",
+            text="Check the feature names, feature order, scaler, and "
+                 "model training pipeline.",
+        ).pack(anchor="w", padx=24, pady=(8, 18))
+
+    def _show_result(self, prediction):
+        # NOTE: assumes class 1 = Healthy, anything else = Patient.
+        # Confirm this mapping against your training dataset.
+        healthy = str(prediction) == "1"
+        bg, border, fg = ((HEALTHY_BG, HEALTHY_BORDER, HEALTHY_FG) if healthy
+                          else (RISK_BG, RISK_BORDER, RISK_FG))
+        sub = "#18764f" if healthy else "#a8483b"
+        body_c = "#416c5c" if healthy else "#865950"
+
+        ctk.CTkLabel(self.result_frame, text="📊  Prediction Result",
+                     font=(FONT, 22, "bold"), text_color=TITLE
+                     ).grid(row=0, column=0, sticky="w", pady=(8, 8))
+
+        card = ctk.CTkFrame(self.result_frame, fg_color=bg, corner_radius=18,
+                            border_width=1, border_color=border)
+        card.grid(row=1, column=0, sticky="ew")
+
+        ctk.CTkLabel(card, text="PREDICTION OUTCOME", font=(FONT, 12, "bold"),
+                     text_color="#45617d").pack(anchor="w", padx=26,
+                                                pady=(20, 0))
+        ctk.CTkLabel(
+            card, font=(FONT, 32, "bold"), text_color=fg,
+            text="✅  Healthy Person" if healthy else "⚠️  Patient",
+        ).pack(anchor="w", padx=26, pady=(4, 0))
+        ctk.CTkLabel(card, text=f"Model predicted Class {prediction}",
+                     font=(FONT, 14, "bold"), text_color=sub
+                     ).pack(anchor="w", padx=26)
+
+        if healthy:
+            msg = (f"The model assigned your measurements to Class "
+                   f"{prediction}. This is not a medical diagnosis. "
+                   "Consult a healthcare professional for interpretation "
+                   "of your results.")
+        else:
+            msg = (f"The model assigned your measurements to Class "
+                   f"{prediction}. This does not confirm a disease. Please "
+                   "consult a healthcare professional for further "
+                   "evaluation.")
+        ctk.CTkLabel(card, text=msg, font=(FONT, 13), text_color=body_c,
+                     wraplength=880, justify="left"
+                     ).pack(anchor="w", padx=26, pady=(10, 22))
+
+    def _show_probabilities(self, classes, probs):
+        card = ctk.CTkFrame(self.result_frame, fg_color=CARD,
+                            corner_radius=18, border_width=1,
+                            border_color=CARD_BORDER)
+        card.grid(row=2, column=0, sticky="ew", pady=(14, 0))
+        card.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(card, text="📈  Model Class Probabilities",
+                     font=(FONT, 18, "bold"), text_color=TITLE
+                     ).grid(row=0, column=0, columnspan=3, sticky="w",
+                            padx=24, pady=(18, 10))
+
+        for i, (cls, p) in enumerate(zip(classes, probs), start=1):
+            ctk.CTkLabel(card, text=f"Class {cls}", font=(FONT, 13, "bold"),
+                         text_color=LABEL, width=80, anchor="w"
+                         ).grid(row=i, column=0, padx=(24, 8), pady=6)
+            bar = ctk.CTkProgressBar(card, height=16, corner_radius=8,
+                                     progress_color=ACCENT,
+                                     fg_color="#e6edfa")
+            bar.set(float(p))
+            bar.grid(row=i, column=1, sticky="ew", pady=6)
+            ctk.CTkLabel(card, text=f"{p * 100:.1f}%", font=(FONT, 13),
+                         text_color=LABEL, width=70, anchor="e"
+                         ).grid(row=i, column=2, padx=(8, 24), pady=6)
+
+        ctk.CTkLabel(
+            card, font=(FONT, 11), text_color=MUTED, justify="left",
+            text="These probabilities describe the model output; they are "
+                 "not validated clinical risk estimates.",
+        ).grid(row=len(classes) + 1, column=0, columnspan=3, sticky="w",
+               padx=24, pady=(6, 18))
 
 
 # =====================================================
-# 9. FOOTER
+# ENTRY POINT
 # =====================================================
-st.markdown("""
-<div class="footer">
-    💙 Health Diagnosis Predictor &nbsp; | &nbsp;
-    Machine Learning &nbsp; | &nbsp; Data-Driven Insights
-    <br><br>
-    For educational purposes only. Not a substitute for
-    professional medical advice or diagnosis.
-</div>
-""", unsafe_allow_html=True)
+if __name__ == "__main__":
+    try:
+        model, scaler = load_artifacts()
+    except Exception as exc:
+        import tkinter as tk
+        root = tk.Tk()
+        root.withdraw()
+        messagebox.showerror("Unable to load model",
+                             f"Unable to load the model or scaler.\n\n{exc}")
+        sys.exit(1)
+
+    HealthApp(model, scaler).mainloop()
